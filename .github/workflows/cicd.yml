@@ -1,98 +1,71 @@
-name: CI/CD Pipeline
+name: CI/CD Flask Pipeline
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [ "dev", "master" ]
   push:
-    branches: [dev, main]
+    branches: [ "dev", "master" ]
 
 jobs:
-  ci:
-    name: Continuous Integration
+  # JOB 1: CI (Linting/Checking) - Runs on PR and Push
+  ci-check:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      - name: Run tests
-        run: |
-          echo "Running tests..."
-          python -c "import flask; print('Flask imported successfully')"
-      
-      - name: Lint code
-        run: |
-          echo "Linting code..."
-          python -m py_compile app.py
 
-  deploy-dev:
-    name: Deploy to DEV Environment
+      - name: Install Linting Tools
+        run: pip install flask
+
+      - name: Syntax Check
+        run: python -m py_compile app.py
+
+  # JOB 2: CD (Deployment) - ONLY runs on Push/Merge to dev or master
+  deploy:
+    needs: ci-check
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Deploy to DEV server
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd ~/app/dev
-            if [ -d ".git" ]; then
-              git pull origin dev
-            else
-              git clone -b dev https://github.com/${{ github.repository }} .
-            fi
-            pip3 install -r requirements.txt --user
-            pkill -f "APP_PORT=4000" || true
-            export APP_ENV=dev
-            export APP_PORT=4000
-            nohup python3 app.py > ~/app/dev/app.log 2>&1 &
-            sleep 3
-            curl -f http://localhost:4000 || echo "DEV deployment failed"
+            # Navigate to project folder
+            cd /home/${{ secrets.EC2_USER }}/flask-cicd-project
+            
+            # Reset any local changes and pull latest code
+            git fetch --all
+            git reset --hard origin/${{ github.ref_name }}
 
-  deploy-live:
-    name: Deploy to LIVE Environment
-    runs-on: ubuntu-latest
-    needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Deploy to LIVE server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd ~/app/live
-            if [ -d ".git" ]; then
-              git pull origin main
+            # Setup environment variables based on branch
+            if [ "${{ github.ref_name }}" == "master" ]; then
+              export APP_PORT=5000
+              export APP_ENV=live
             else
-              git clone -b main https://github.com/${{ github.repository }} .
+              export APP_PORT=4000
+              export APP_ENV=dev
             fi
-            pip3 install -r requirements.txt --user
-            pkill -f "APP_PORT=5000" || true
-            export APP_ENV=live
-            export APP_PORT=5000
-            nohup python3 app.py > ~/app/live/app.log 2>&1 &
-            sleep 3
-            curl -f http://localhost:5000 || echo "LIVE deployment failed"
+
+            # Install dependencies in the virtual environment
+            ./venv/bin/pip install -r requirements.txt
+
+            # Stop existing app on the target port
+            sudo fuser -k $APP_PORT/tcp || true
+
+            # START APP IN BACKGROUND (The fix for Status 143)
+            # We use < /dev/null to prevent the SSH session from hanging
+            nohup ./venv/bin/python app.py > app.log 2>&1 < /dev/null &
+            
+            # Give the app a moment to start before closing connection
+            sleep 2
+            
+            # Verify if it's running
+            ps aux | grep "python app.py" | grep $APP_PORT || echo "App failed to start"
