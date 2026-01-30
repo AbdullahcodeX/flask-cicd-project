@@ -12,13 +12,6 @@ def home():
     if ENVIRONMENT == "live":
         return "Welcome to Live"
     return "Welcome to Dev 44314 23423"
-=======
-
-    if ENVIRONMENT == "live":
-
-        return "Welcome to Live"
-
-    return "Welcome to Dev to dev server  again"
 >>>>>>> a53478b (add code)
 
 if __name__ == "__main__":
