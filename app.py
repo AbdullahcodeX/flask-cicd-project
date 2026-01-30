@@ -3,25 +3,20 @@ from flask import Flask
 
 app = Flask(__name__)
 
+# Logic: If environment is 'live', use port 5000; otherwise use 4000
 ENVIRONMENT = os.getenv("APP_ENV", "dev")
-<<<<<<< HEAD
-PORT = int(os.getenv("APP_PORT", 5000))
-=======
-PORT = int(os.getenv("APP_PORT", 4000))
->>>>>>> 2b7cb24720acafada1cbdd3788f1bfc01e0dd9ff
 
+if ENVIRONMENT == "live":
+    PORT = int(os.getenv("APP_PORT", 5000))
+else:
+    PORT = int(os.getenv("APP_PORT", 4000))
 
 @app.route("/")
 def home():
     if ENVIRONMENT == "live":
-<<<<<<< HEAD
-        return "Abdullah how are you"
-=======
-        return "Welcome to Live environment"
+        return "Abdullah how are you? Welcome to Live environment"
     else:
         return "Welcome to Dev environment"
-
->>>>>>> 2b7cb24720acafada1cbdd3788f1bfc01e0dd9ff
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
