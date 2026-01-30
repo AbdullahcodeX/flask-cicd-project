@@ -14,9 +14,7 @@ def home():
 
     if ENVIRONMENT == "live":
 
-        return "Welcome to Live"
-
-    return "Welcome to Dev"
+        return "Welcome to Live env "
 
 if __name__ == "__main__":
 
